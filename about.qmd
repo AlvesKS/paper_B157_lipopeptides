@@ -1,0 +1,48 @@
+---
+title: "About the study"
+---
+
+## Antifungal Lipopeptide Production and Tomato Early Blight Control by Bacillus velezensis B157
+
+
+**Amarildo L. Silva Junior^1^ , Álefe V. Borges^1^ , Hiago Antonio O. da Silva^1^ , Iris Carolina
+H. L. Leite^1^, Kaique S. Alves^1^ , Lívia S. de Medeiros^2^, Lucas M. de Abreu ^1^\***
+
+> ^1^ Departamento de Fitopatologia, Universidade Federal de Viçosa, 36570-900,
+Viçosa, Minas Gerais, Brazil.
+>
+> ^2^ Departamento de Química, Universidade Federal de São Paulo, 09972-720,
+Diadema, São Paulo, Brazil.
+>
+>\* Corresponding author: lmabreu@ufv.br
+>
+
+### Summary
+
+Coming soon...
+
+## Original article
+
+::: callout-note
+## This repository contains the data and code for our article:
+
+Citation coming soon..
+:::
+
+## Pre-print
+
+::: callout-note
+## Our preprint is online on the OSF preprint server:
+
+Citation coming soon...
+:::
+
+## Research compendium
+
+::: callout-note
+## Please cite this research compendium as:
+
+Da Silva Junior, A. L., Alves, K. S., & Abreu, L. M. (2022, November 1). Research Compendium: Antifungal Lipopeptide Production and Tomato Early Blight Control by Bacillus velezensis B157. https://doi.org/10.17605/OSF.IO/PJTUS
+:::
+
+

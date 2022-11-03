@@ -1,0 +1,412 @@
+---
+title: "Well diffusion"
+---
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(gsheet)
+library(cowplot)
+library(multcomp)
+library(lme4)
+library(ggthemes)
+library(car)
+library(effects)
+library(emmeans)
+library(afex)  
+```
+
+# Load data
+
+```{r}
+data1 = gsheet2tbl("https://docs.google.com/spreadsheets/d/1qYZ7EfVSn-gL-pV-bBEVU-LCAdDUAz-SToCaHQpZjlE/edit?usp=sharing") %>% 
+  mutate(long = as.numeric(long),
+         trans = as.numeric(trans)) %>% 
+  mutate(dai = case_when(aval == 1 ~ 5,
+                         aval == 2 & species=="microtom" & trial==1 ~ 10,
+                         aval == 2 & species=="microtom" & trial==2 ~ 7,
+                         aval == 2 & species=="potato" ~ 7,
+                         aval == 3 ~9,
+                         aval == 4 ~11)) %>% 
+  mutate(leasion_size = (trans+long)/2) %>% 
+  filter(leasion_size>0) %>% 
+  mutate(trat = factor(trat, levels = c("CHECK","MEDIUM","CE_MEDIUM","CE_RESIDUE", "CE_LPP")))
+
+head(data1)
+```
+
+# Visualization
+
+```{r}
+data1 %>% 
+  ggplot(aes(dai,sqrt(leasion_size), color = trat))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F, formula = y~poly(x, 1))+
+  facet_grid(species ~trial)
+
+```
+
+```{r}
+data1 %>% 
+  group_by(trial,trat,species) %>% 
+  filter(dai == max(dai)) %>% 
+  ggplot(aes(trat,leasion_size))+
+  geom_jitter(width = 0.1)+
+  geom_boxplot(fill = NA)+
+  facet_grid(species ~trial)+
+  theme(axis.text.x = element_text(angle = 45,hjust = 1))
+```
+
+# Microtom
+
+Selecting microtom tom data
+
+```{r}
+data_microtom = data1 %>% 
+  filter(species == "microtom") %>% 
+  mutate(leaflet = as.factor(leaflet),
+         trial = as.factor(trial)) %>% 
+  mutate(trat = factor(trat, levels = c("CHECK","MEDIUM","CE_MEDIUM","CE_RESIDUE", "CE_LPP")))
+
+
+```
+
+# modeling
+
+## Mix model
+
+```{r}
+mix_microtom = lmer(sqrt(leasion_size) ~ trat*dai + (1|trial/leaflet),
+                    data = data_microtom, REML = F)
+summary(mix_microtom)
+AIC(mix_microtom)
+```
+
+```{r}
+Anova(mix_microtom)
+```
+
+```{r}
+# em1 = emtrends(mix_microtom,~trat, trend = "dai")
+```
+
+## Visualize
+
+```{r}
+eff = predictorEffects(mix_microtom, "trat", xlevels = 50)
+# eff$trat
+as.data.frame(eff$trat) %>%
+  mutate(trat = factor(trat, levels = c("CHECK","MEDIUM","CE_MEDIUM","CE_RESIDUE", "CE_LPP"))) %>% 
+  # mutate(fit = exp(fit),
+         # lower = exp(lower),
+         # upper = exp(upper) ) %>% 
+  ggplot(aes(dai,fit,color =trat))+
+  geom_point(data =data_microtom, aes(dai,sqrt(leasion_size), group=trat),color = "gray")+
+  geom_ribbon(aes(ymin =(lower),ymax = (upper), group = trat),color =NA, alpha = 0.01)+
+  geom_line(size = 1)+
+  scale_color_colorblind()+
+  theme_minimal_hgrid()+
+  labs(x = "dai",
+       y = expression(sqrt("diameter")))
+  # facet_wrap(~trat)
+
+```
+
+## Final severity
+
+```{r}
+microton_final = data1 %>% 
+  filter(species =="microtom") %>% 
+  group_by(trial,trat,species) %>% 
+  filter(dai == max(dai)) 
+
+```
+
+```{r}
+mix_microtom2 = lmer((leasion_size) ~ trat + (1|trial/leaflet),
+                    data = microton_final, REML = F)
+summary(mix_microtom2)
+AIC(mix_microtom2)
+```
+
+# Well difusion
+
+## Load data
+
+```{r}
+well_load = gsheet2tbl("https://docs.google.com/spreadsheets/d/1rFebMOmrogBPB3JSVTKfDtQIFU_B6pnwseSJPWcLVt4/edit?usp=sharing")
+```
+
+# Tidy
+
+### Lote 1
+
+```{r}
+well_data1 = well_load %>% 
+  mutate(trat =  factor(trat, levels = c("Check" ,"CE_Medium", "B157", "CE_Lpp","Frac1","Frac2","Frac3","Frac4","Frac5","Frac6","Frac7","Frac8","Frac9","Frac10","Frac11")))%>% 
+  filter(lote ==1)
+
+```
+
+## viz
+
+```{r}
+well_data1  %>% 
+  ggplot(aes(trat, raio, color = as.factor(exec), fill =as.factor(exec)))+
+  geom_point(color ="gray",
+             size =1,
+             position = position_jitterdodge(jitter.width = .3,
+                                             dodge.width = .5))+
+  stat_summary(fun.data = "mean_cl_boot",
+               geom = "errorbar",
+               width = 0,
+               size =.5,
+               position = position_dodge(width=.5))+
+  stat_summary(fun = "mean",
+               size = 1.4,
+               geom = "point",
+               position = position_dodge(width=.5))+
+  facet_wrap(~species)+
+  scale_color_calc()+
+  theme_minimal_hgrid(font_size = 10)+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        panel.border = element_rect(color = "gray"),
+        strip.text = element_text(face = "italic"))+
+  labs(x = "",
+       y = "Inhibition zone (radius cm)",
+       color = "Trial",
+       fill = "Trial")
+
+
+```
+
+## Modeling
+
+### trial 1
+
+```{r}
+t1_well_data1 = well_data1 %>% 
+  filter(exec ==1)
+```
+
+```{r}
+leveneTest(raio ~ trat*species, t1_well_data1)
+```
+
+Inhibition zone values equal to zero were converted to 0.001 because the Gamma distribution assumes only positive values
+
+```{r}
+mod1 = glm(raio+0.001 ~ trat*species,family = Gamma, t1_well_data1)
+summary(mod1)
+# hist(residuals(mod1))
+# shapiro.test(residuals(mod1))
+```
+
+```{r}
+Anova(mod1)
+```
+
+```{r}
+cld(emmeans(mod1, "trat", by = "species", type= "response"), Letters = letters)
+plot
+```
+
+```{r}
+# cld(emmeans(mod1, "species", by = "trat", type= "response"), Letters = letters)
+```
+
+### Trial 2
+
+```{r}
+t2_well_data1 = well_data1 %>% 
+  filter(exec ==2)
+```
+
+Inhibition zone values equal to zero were converted to 0.001 because the Gamma distribution assumes only positive values
+
+```{r}
+mod2 = glm(raio+0.001 ~ trat*species,family = Gamma, t2_well_data1)
+summary(mod2)
+
+```
+
+```{r}
+Anova(mod2)
+```
+
+```{r}
+cld(emmeans(mod2, "trat", by = "species", type= "response"), Letters = letters)
+```
+
+```{r}
+
+# cld(emmeans(mod2, "species", by = "trat"), Letters = letters)
+```
+
+### Lote 2
+
+```{r}
+order = c("Check" ,"CE_Medium", "CP", "CE_Lpp","Frac1","Frac2","Frac3","Frac4","Frac5","Frac6","Frac7","Frac8","Frac9","Frac10","Frac11")
+well_data2 = well_load %>% 
+  mutate(trat =  factor(trat, levels = c("Check" ,"CE_Medium", "B157", "CE_Lpp","Frac1","Frac2","Frac3","Frac4","Frac5","Frac6","Frac7","Frac8","Frac9","Frac10","Frac11")))%>% 
+  filter(lote ==2, trat !="Frac8") %>%
+  mutate(trat = as.character(trat),
+         trat = case_when(trat == "Frac9" ~ "Frac8", trat == "Frac10" ~ "Frac9",
+                          !trat %in% c("Frac9", "Frac10") ~ trat)) %>%
+  mutate(trat =  factor(trat, levels =order ))
+
+```
+
+## viz
+
+```{r}
+well_data2  %>% 
+     ggplot(aes(trat, raio, color = as.factor(exec), fill =as.factor(exec)))+
+  geom_point(color ="gray",
+             size =1,
+             position = position_jitterdodge(jitter.width = .3,
+                                             dodge.width = .5))+
+  stat_summary(fun.data = "mean_cl_boot",
+               geom = "errorbar",
+               width = 0,
+               size =.5,
+               position = position_dodge(width=.5))+
+  stat_summary(fun = "mean",
+               size = 1.4,
+               geom = "point",
+               position = position_dodge(width=.5))+
+  facet_wrap(~species)+
+  scale_color_calc()+
+  theme_minimal_hgrid(font_size = 10)+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        panel.border = element_rect(color = "gray"),
+        strip.text = element_text(face = "italic"))+
+  labs(x = "",
+       y = "Inhibition zone (radius cm)",
+       color = "Trial",
+       fill = "Trial")
+
+```
+
+## Modeling
+
+### trial 1
+
+```{r}
+t1_well_data2 = well_data2 %>% 
+  filter(exec ==1)
+```
+
+```{r}
+mod1_2 = glm(raio+0.001 ~ trat*species,family = Gamma, t1_well_data2)
+summary(mod1_2)
+```
+
+```{r}
+boot::glm.diag.plots(mod1_2,boot::glm.diag(mod1_2))
+
+```
+
+```{r}
+Anova(mod1_2)
+```
+
+```{r}
+cld(emmeans(mod1_2, "trat", by = "species", type= "response"), Letters = letters)
+plot
+```
+
+```{r}
+# cld(emmeans(mod1, "species", by = "trat", type= "response"), Letters = letters)
+```
+
+### Trial 2
+
+```{r}
+t2_well_data2 = well_data2 %>% 
+  filter(exec ==2)
+```
+
+```{r}
+mod2_2= glm(raio+0.001 ~ trat*species, family = Gamma, t2_well_data2)
+summary(mod2_2)
+
+```
+
+```{r}
+boot::glm.diag.plots(mod1_2,boot::glm.diag(mod2_2))
+
+```
+
+```{r}
+Anova(mod2_2)
+```
+
+```{r}
+cld(emmeans(mod2_2, "trat", by = "species", type= "response"), Letters = letters)
+```
+
+```{r}
+
+# cld(emmeans(mod2, "species", by = "trat"), Letters = letters)
+```
+
+```{r}
+all_data_modeled = bind_rows(
+as.data.frame(emmeans(mod1, "trat", by = "species", type= "response")) %>% 
+  mutate(lote = "Second batch",
+         trial = "First trial"),
+as.data.frame(emmeans(mod2, "trat", by = "species", type= "response"))%>% 
+  mutate(lote = "Second batch",
+         trial = "Second trial"),
+
+as.data.frame(emmeans(mod1_2, "trat", by = "species", type= "response")) %>% 
+  mutate(lote = "Third batch",
+         trial = "First trial"),
+as.data.frame(emmeans(mod2_2, "trat", by = "species", type= "response"))%>% 
+  mutate(lote = "Third batch",
+         trial = "Second trial")
+
+
+)
+
+
+```
+
+```{r}
+all_data_modeled %>%
+  filter(lote == "Second batch") %>% 
+    mutate(trat = as.character(trat),
+         trat = case_when(trat == "B157" ~ "CP",
+                          trat == "CE_Medium" ~ "CE medium",
+                          trat == "Check"~ "Control",
+                          trat == "CE_Lpp" ~ "CE",
+                          !trat %in% c("B157","CE_Medium", "Check", "CE_Lpp") ~ trat),
+         species = case_when(species == "Isolate A3 - A. linariae" ~ "A3 - A. linariae",
+                            species == "Isolate 248 - A. grandis" ~ "As248P - A. linariae")) %>%
+    mutate(trat =  factor(trat, levels = c("Control" ,"CE medium", "CP", "CE","Frac1","Frac2","Frac3","Frac4","Frac5","Frac6","Frac7","Frac8","Frac9","Frac10","Frac11")))%>% 
+   ggplot(aes(trat,response, color = trial))+
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
+                position = position_dodge(width = 0.4),
+                width = 0, size =0.5)+
+  geom_point(position = position_dodge(width = 0.4), size = 1.5)+
+  
+  lemon::facet_rep_wrap(~species)+
+  scale_color_manual(values= c("#41ae76","#005824"))+
+  theme_half_open(font_size = 12, line_size = 0.2)+
+  theme(
+        strip.text = element_text(face = "italic"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+        )+
+  labs(x = "",
+       y = "Inhibition zone (cm)",
+       color ="")+
+  background_grid(size.major = 0.2,color.major = "grey90")
+  # coord_flip()
+ggsave(".figs/inhib.png", dpi = 600, height = 3, width = 7, bg = "white")
+
+
+```

@@ -1,0 +1,327 @@
+---
+title: "Control efficacy"
+---
+
+# Packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(gsheet)
+library(ggthemes)
+library(cowplot)
+library(epifitter)
+library(car)
+library(emmeans)
+library(multcomp)
+library(lemon)
+library(patchwork)
+```
+
+```{r}
+theme_kaique=theme_minimal()+
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(size = 10),
+        axis.ticks = element_line(color = "gray"),
+        axis.line = element_line(color = "gray"))
+```
+
+# Load Data
+
+```{r}
+data_load = gsheet2tbl("https://docs.google.com/spreadsheets/d/1wxvjxHBWDCUs4kk7TMVptFJDJl0RpKCUrNtRl3Ox7Wk/edit?usp=sharing") 
+```
+
+```{r}
+data = data_load %>% 
+  #removing UCB07 treatment
+  filter(trat != "UCB07") %>% 
+  # reordering treatments
+  mutate(trat = factor(trat, levels = c("Control", "B157", "Fungicide"))) 
+  
+```
+
+Visualization
+
+```{r}
+data %>% 
+  ggplot(aes(dai, sev, color = as.factor(study)))+
+  geom_point()+
+  facet_wrap(~trat)
+```
+
+## AUDPS - Area under disease progress stairs
+
+Here we calculated the area under disease progress stair (AUDPS) using the function `AUDPS()` from the `epifitter` package.
+
+```{r}
+AUDPS_data = data %>% 
+  mutate(dai = dai-7) %>% 
+  group_by(trat, study, rep) %>% 
+  summarise(audps = AUDPS(time = dai,y = sev))
+
+```
+
+### Visualization
+
+The comparison of the AUDPS values between treatments
+
+```{r}
+AUDPS_data %>% 
+  ggplot(aes(trat, audps))+
+  geom_point()
+```
+
+The comparison of the transformed ($log(AUDPS+1)$) AUDPS values between treatments.
+
+```{r}
+AUDPS_data %>% 
+  ggplot(aes(trat, log(audps+1)))+
+  geom_point()
+```
+
+### Modeling AUDPS
+
+#### Fisrt trial
+
+Here we model the transformed AUDPS using a linear model.
+
+```{r}
+lm_auc1 = lm(log(audps+1)~trat,data= AUDPS_data %>% filter(study ==1))
+summary(lm_auc1)
+```
+
+Testing the model assumptions
+
+```{r}
+leveneTest(lm_auc1)
+shapiro.test(lm_auc1$residuals)
+```
+
+##### Post-hoc coparisons
+
+We used the function `cld()` to compare the means obtained from the `emmeans()` function.
+
+```{r}
+cld(
+  emmeans(lm_auc1, ~trat, type = "response"),
+  Letters = letters)
+```
+
+#### Second trial
+
+We repeated the same approach above to the second trial.
+
+```{r}
+lm_auc2 = lm(log(audps+1)~trat,data= AUDPS_data %>% filter(study ==2))
+summary(lm_auc2)
+```
+
+```{r}
+leveneTest(lm_auc2)
+shapiro.test(lm_auc2$residuals)
+```
+
+```{r}
+cld(
+  emmeans(lm_auc2, ~trat, type = "response"),
+  Letters = letters)
+```
+
+# Control efficacy
+
+```{r}
+dataf = data %>% 
+  filter(dai == max(dai)) %>% 
+  mutate(sev = case_when(sev==0~0.1,
+                         sev!=0~sev),
+         sev = sev/100)
+```
+
+```{r}
+dataf %>% 
+  ggplot(aes(trat,log(sev), color = factor(study)))+
+  geom_point(width = 0.1,
+              position = position_jitterdodge(jitter.width = 0.1))+
+  geom_boxplot(fill = NA)
+```
+
+### Firts Trial
+
+```{r}
+lm_f1 = lm(log(sev) ~trat, data = dataf %>% filter(study == 1))
+summary(lm_f1)
+```
+
+```{r}
+cld(
+  emmeans(lm_f1, ~trat, type = "response"),
+  Letters = letters)
+```
+
+Calculating control efficacy
+
+```{r}
+as.data.frame(Confint(lm_f1)) %>% 
+  rownames_to_column(var = "coef") %>% 
+  filter(coef != "(Intercept)") %>% 
+  separate(coef, into = c("trash", "trat"), sep = "trat") %>% 
+  dplyr::select(-trash) %>% 
+  mutate(C = (1-exp(Estimate))*100,
+         C_upper= (1-exp(`2.5 %`))*100,
+          C_lower = (1-exp(`97.5 %`))*100,)
+```
+
+### Second Trial
+
+```{r}
+lm_f2 = lm(log(sev) ~trat, data = dataf %>% filter(study == 2))
+summary(lm_f2)
+```
+
+```{r}
+cld(
+  emmeans(lm_f2, ~trat, type = "response"),
+  Letters = letters)
+```
+
+Calculating control efficacy
+
+```{r}
+as.data.frame(Confint(lm_f2)) %>% 
+  rownames_to_column(var = "coef") %>% 
+  filter(coef != "(Intercept)") %>% 
+  separate(coef, into = c("trash", "trat"), sep = "trat") %>% 
+  dplyr::select(-trash) %>% 
+  mutate(C = (1-exp(Estimate))*100,
+        C_lower = (1-exp(`97.5 %`))*100,
+        C_upper = (1-exp(`2.5 %`))*100)
+```
+
+# Modelos
+
+```{r}
+data_fitting  = data %>% 
+  mutate(sev= sev/100,
+         sev = case_when(sev==0~0.001,
+                         sev!=0~sev),
+         dai = dai-7)
+
+```
+
+```{r}
+data_fitting_c = data_fitting %>% filter(trat =="Control", study ==2)
+
+fit_nlin2(time =data_fitting_c$dai,
+        y = data_fitting_c$sev)
+```
+
+```{r}
+fit = fit_multi(time_col = "dai",
+          intensity_col = "sev",
+          data = data_fitting,
+          nlin = T,
+          starting_par = list(y0 = 0.001, r = 0.01, K =  0.5),
+          estimate_K = T,
+          strata_cols = c("trat" , "study"))  
+```
+
+```{r}
+fit$Parameters %>% 
+  group_by(trat,model,best_model,study) %>% 
+  summarise(RSE) %>% 
+  arrange(RSE)
+
+```
+
+```{r}
+curves = fit$Data %>%
+  # full_join(fit$Parameters) %>% 
+  filter(model=="Monomolecular") %>% 
+  mutate(trat = case_when(trat == "B157" ~ "CE",
+                          trat != "B157" ~trat )) %>% 
+  mutate(trat = factor(trat, levels = c("Control", "CE", "Fungicide")),
+         study = case_when(study == 1 ~ "First trial",
+                           study == 2 ~ "Second trial")) %>% 
+  ggplot()+
+  geom_jitter(aes(time+7,y*100, color= trat),
+             alpha = .5,
+             width = 0.1,
+             size = 1.2)+
+  geom_line(aes(time+7, predicted*100, color= trat),
+             size =.8)+
+  facet_rep_wrap(~study)+
+  scale_color_colorblind()+
+  labs(x = "Days after inoculation",
+       y = "Severity (%)",
+       color = "")+
+  scale_x_continuous(breaks = c(7, 9, 11, 13, 15, 17, 20))+
+  theme_kaique
+curves
+# ggsave("figs/curves.png", dpi = 600, height = 4, width = 6)
+
+ # - 7
+
+```
+
+```{r}
+g_r = fit$Parameters %>% 
+  filter(model == "Monomolecular") %>% 
+  mutate(trat = case_when(trat == "B157" ~ "CE",
+                          trat != "B157" ~trat )) %>% 
+  mutate(trat = factor(trat, levels = c("Control", "CE", "Fungicide")),
+         study = case_when(study == 1 ~ "First trial",
+                           study == 2 ~ "Second trial")) %>% 
+  ggplot(aes(trat, r*K, color = study))+
+  geom_point(position = position_dodge(width = 0.2),
+             size = 2)+
+  geom_errorbar(aes(ymin = r_ci_lwr, ymax = r_ci_upr ),
+                width = 0,
+                size =1,
+                position = position_dodge(width = 0.2))+
+  # scale_color_calc()+
+    scale_color_manual(values= c("#41ae76","#005824"))+
+  labs(y = "Apparent infection rate",
+       x = "",
+       color ="")+
+  theme_minimal_hgrid()+
+  theme(legend.position = "bottom")
+g_r
+```
+
+```{r}
+g_y0 =fit$Parameters %>% 
+  filter(model == "Monomolecular") %>% 
+  mutate(trat = case_when(trat == "B157" ~ "CE",
+                          trat != "B157" ~trat )) %>%
+   mutate(trat = factor(trat, levels = c("Control", "CE", "Fungicide")),
+         study = case_when(study == 1 ~ "First trial",
+                           study == 2 ~ "Second trial")) %>% 
+  ggplot(aes(trat, y0*100, color = study))+
+  geom_point(position = position_dodge(width = 0.2),
+             size = 2)+
+  geom_errorbar(aes(ymin=y0_ci_lwr*100,ymax = y0_ci_upr *100),
+                width = 0,
+                size =1,
+                position = position_dodge(width = 0.2))+
+  # scale_color_calc()+
+  scale_color_manual(values= c("#41ae76","#005824"))+
+  labs(y = "Initial inoculum (%)",
+       x = "",
+       color = "")+
+  theme_minimal_hgrid()+
+  theme(legend.position = "bottom")
+g_y0
+```
+
+#### Combo parameters
+
+```{r}
+curves /( g_r + g_y0)+
+  plot_layout(guides = "collect",
+              nrow = 2)+
+  plot_annotation(tag_levels = "A")&
+  theme_kaique
+  # theme(legend.position = "bottom")
+ggsave(".figs/curve_parameters.png", dpi = 600, height = 5, width = 7, bg = "white")
+```
+

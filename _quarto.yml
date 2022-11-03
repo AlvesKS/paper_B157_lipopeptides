@@ -1,0 +1,65 @@
+project:
+  type: website
+  output-dir: docs
+  execute-dir: project
+  render:
+    - index.qmd
+    - about.qmd
+    - fungal_sensibility.qmd
+    - well_diffusion.qmd
+    - controling_efficacy.qmd
+    - "!docs/"
+    - "!quarto/"
+    - "!figs/"
+    - "!fungal_sensibility_files/*.ini"
+    - "!*.css"
+    - "!fungal_sensibility_files/"
+
+website:
+  title: "B157 lipopeptides"
+  page-navigation: true
+  open-graph: true
+  repo-url: https://github.com/AlvesKS/paper_B157_lipopeptides
+  repo-actions: [edit, issue]
+  search: 
+    location: navbar
+    type: textbox 
+  sidebar:
+    style: "floating"
+    search: true
+    contents:
+      - section: Repository
+        contents:
+        - index.qmd
+        - about.qmd
+      - section: Data analysis
+        contents:
+          - fungal_sensibility.qmd
+          - well_diffusion.qmd
+          - controling_efficacy.qmd
+            
+            
+    tools:
+      - icon: twitter
+        href: https://twitter.com/Amarildo_lsjr
+      - icon: download
+        href: https://osf.io/pjtus/
+  page-footer: "Copyright © 2022 Kaique S. Alves"            
+                        
+            
+
+
+format:
+  html:
+    self-contained: false
+    # theme: cosmo
+    css: styles.css
+    toc: true
+    smooth-scroll: true
+
+theme:
+  light: flatly
+  dark: darkly
+
+# editor: visual
+

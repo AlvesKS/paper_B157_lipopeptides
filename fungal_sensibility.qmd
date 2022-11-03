@@ -1,0 +1,333 @@
+---
+title: "Fungal sensibility"
+---
+
+# Pacotes
+
+```{r}
+library(tidyverse)
+library(drc)
+library(ec50estimator)
+library(cowplot)
+library(ggthemes)
+library(ggridges)
+library(gsheet)
+library(patchwork)
+```
+
+# Carregar dados
+
+```{r}
+df1 = gsheet2tbl("https://docs.google.com/spreadsheets/d/1XGLpSlJZayIVSVxWTsyDJXpO4c65JOeMOyMAW18EVqY/edit?usp=sharing")
+df1
+```
+
+```{r}
+df2 = df1 %>% 
+  mutate(trans = as.numeric(trans))%>%
+mutate(m_col = (long+trans)/2)%>%
+  filter(specie == "linariae", trat == "EB")
+df2
+ # ggplot(aes(as.factor(conc), m_col, fill=trat))+
+#geom_point()
+  #facet_wrap(~specie)
+```
+
+```{r}
+df2 %>% 
+  ggplot(aes(as.factor(conc), m_col, fill=trat))+
+geom_point()
+```
+
+```{r}
+model = drm(m_col ~ conc, data = df2, fct = W1.4())
+summary(model)
+plot(model)
+```
+
+```{r}
+# getmeanfunction()
+```
+
+```{r}
+ED(model, respLev = 50, interval = "delta")
+mselect(model, fctList = list(LL.4(),LL2.4(), LL.3(), LL.3u(), LL.2(), LL.5(), W1.3(), W1.4(), W1.2(), W2.2(), W2.3(), W2.4()))
+```
+
+# Análise para os dois isolados
+
+```{r}
+df3 = df1 %>% 
+  mutate(trans = as.numeric(trans))%>%
+  mutate(m_col1 = (long+trans)/2) %>% 
+  filter(trial == "1", 
+         trat == "EB")
+   df3
+```
+
+```{r}
+df3 %>% 
+  ggplot(aes(as.factor(conc), m_col1, color=specie))+
+geom_point()
+```
+
+```{r}
+model2 = drm(m_col1 ~ conc, curveid = specie, data = df3, fct = LL.3())
+summary(model2)
+plot(model2)
+```
+
+```{r}
+mselect(model2, fctList = list(LL.4(),LL2.4(), LL.3(), LL.3u(), LL.2(), LL.5(), W1.3(), W1.4(), W1.2(), W2.2(), W2.3(), W2.4()))
+```
+
+```{r}
+ED(model2, respLev=50)
+```
+
+# EC50 (Trial 1)
+
+```{r}
+df4 = df1 %>% 
+  mutate(trans = as.numeric(trans))%>%
+  mutate(m_col1 = (long+trans)/2) #%>% 
+   # filter(trial == "1")
+```
+
+```{r}
+ec50_out = estimate_EC50(formula = m_col1~conc,
+              data = df4,
+              isolate_col = "trat",
+              strata_col = c("specie", "trial"),
+              fct = LL2.3() ,
+              interval = "delta") %>% 
+  mutate(Estimate = round(exp(Estimate),4),
+         Lower = round(exp(Lower),4),
+         Upper = round(exp(Upper),4))
+
+ec50_out
+```
+
+```{r}
+ec50_plot = ec50_out %>%
+  mutate(ID = case_when(ID == "EB" ~ "CE",
+                   ID == "PC" ~ "CP",
+                   ID == "DACONIL" ~ "Fungicide",
+                   ID == "SERENADE" ~ "QST713"),
+         specie = case_when(specie == "linariae" ~ "A3 - A. linariae",
+                            specie == "grandis" ~ "As248P - A. linariae"),
+         trial = case_when(trial=="1" ~"First trial",
+                           trial == "2" ~ "Second trial")) %>% 
+  
+  
+  ggplot(aes(ID,Estimate, color = specie)) +
+  geom_point(size = 2, 
+             position = position_dodge(width = 0.4))+
+  geom_errorbar(aes(ymin=Lower, ymax = Upper),
+                width = 0, 
+                size =1, 
+             position = position_dodge(width = 0.4))+
+  scale_y_log10()+
+  lemon::facet_rep_grid(trial~.)+
+  labs(y = expression("EC"[50]~" μg/mL"),
+       x = "", color = "")+
+  scale_color_colorblind()+
+  theme_half_open(font_size = 10)+
+  theme(legend.text = element_text(face = "italic"),
+        panel.spacing = unit(1, "lines"),
+        strip.background = element_blank()
+        # panel.border = element_rect(color = "gray")
+        )
+ec50_plot   
+  # ggsave("figs/ec50.png", dpi = 600, height =3,width = 6)
+
+```
+
+```{r}
+estimate_EC502 = function (formula, data, EC_lvl = 50, isolate_col, strata_col = NULL, 
+    fct, interval = c("none", "delta", "fls", 
+        "tfls")) 
+{
+    {
+        if (missing(formula)) {
+            stop(gettextf("Please, specify the 'formula'"))
+        }
+    }
+    {
+        if (missing(data)) {
+            stop(gettextf("Missing 'data'"))
+        }
+    }
+    {
+        if (missing(isolate_col)) {
+            stop(gettextf("Missing 'isolate_col'"))
+        }
+    }
+    {
+        if (missing(fct)) {
+            stop(gettextf("Please, specify the 'fct'"))
+        }
+    }
+    box = data.frame()
+    box_coef = data.frame()
+    if (is.null(strata_col)) {
+        data_uni = data %>% dplyr::mutate(strata = "")
+        strata_col = "strata"
+    }
+    else {
+        data_uni = data %>% tidyr::unite(strata, strata_col, 
+            sep = "---")
+    }
+    STRATA = data_uni[["strata"]]
+    strata = as.character(unique(STRATA))
+    for (i in 1:length(strata)) {
+        rowi = data_uni[["strata"]] == strata[i]
+        datai = data_uni[rowi, ]
+        ID = datai[[isolate_col]]
+        id = as.character(unique(ID))
+        for (k in 1:length(id)) {
+            rowk = datai[[isolate_col]] == id[k]
+            datak = datai[rowk, ]
+            try({
+                model = drc::drm(formula, fct = fct, data = datak)
+                ed = drc::ED(model, EC_lvl, interval = interval, display = F)
+                lil_box = data.frame(ID = as.character(id[k]), 
+                                    strata = as.character(strata[i]), ed) %>%
+                  tibble::remove_rownames() %>% 
+                  dplyr::mutate(strata = as.character(strata), 
+                                ID = as.character(ID)) %>%
+                  tidyr::separate(strata, 
+                  into = strata_col, sep = "---")
+                box = box %>% dplyr::bind_rows(lil_box)
+                
+            aa1 = model$coefficients
+            lil_box_coef = as.data.frame(aa1) %>%
+              tibble::rownames_to_column("par") %>%
+              dplyr::mutate(value = aa1) %>% 
+              dplyr::select(-aa1) %>% 
+              tidyr::pivot_wider(names_from =par,
+                                 values_from = value) #%>% 
+              # dplyr::mutate(strata = as.character(strata), 
+              #                   ID = as.character(ID)) %>%
+              # tidyr::separate(strata,into = strata_col, sep = "---")   
+                
+             box_coef = box_coef %>% dplyr::bind_rows(lil_box_coef)   
+                
+                
+            }, silent = T)
+        }
+    }
+    computed_isolates = unique(box$ID)
+    all_isolates = as.character(unique(data[[isolate_col]]))
+    true_false = !all_isolates %in% computed_isolates
+    did_not = all_isolates[true_false]
+    if (length(did_not) > 0) {
+        print(paste0("Isolates = c(", toString(paste0("'", 
+            did_not, "'")), ") did not produced ec50 estimates due to error during fitting procedure", 
+            collapse = ", "))
+    }
+    
+    
+
+    return(bind_cols(box, box_coef))
+}
+```
+
+```{r}
+aa1 = model$coefficients
+as.data.frame(aa1) %>% 
+  tibble::rownames_to_column("par") %>% 
+  dplyr::mutate(value = aa1) %>% 
+  dplyr::select(-aa1) %>% 
+  tidyr::pivot_wider(names_from =par,
+              values_from = value)
+```
+
+```{r}
+df1_1 = df1 %>% 
+  mutate(trans = as.numeric(trans))%>%
+mutate(m_col = (long+trans)/2, 
+       trial = as.character(trial))
+```
+
+```{r}
+EC50_out2 = estimate_EC502(formula = m_col1~conc,
+              data = df4,
+              isolate_col = "trat",
+              strata_col = c("specie", "trial"),
+              fct = LL2.3() ,
+              interval = "delta")
+```
+
+```{r}
+model_ll2.3 = function(b,d,e,x)  0+(d-0)/(1+exp(b*(log(x)-log(e))))
+
+```
+
+<!-- $0 + \frac{d-0}{1+\exp(b(\log(x)-\log(e)))}$ -->
+
+```{r}
+EC50_out2_plot = EC50_out2 %>% 
+  rename(trat = "ID") %>% 
+  full_join(df1_1) %>% 
+  unite(cols, trat, specie,trial, sep ="_",remove = FALSE) %>% 
+  filter(conc>0) %>% 
+  mutate(trat = case_when(trat == "EB" ~ "CE",
+                   trat == "PC" ~ "CP",
+                   trat == "DACONIL" ~ "Fungicide",
+                   trat == "SERENADE" ~ "QST713"),
+         specie = case_when(specie == "linariae" ~ "A3 - A. linariae",
+                            specie == "grandis" ~ "As248P - A. linariae"),
+         trial = case_when(trial=="1" ~"First trial",
+                           trial == "2" ~ "Second trial"))
+```
+
+```{r}
+colls = unique(EC50_out2_plot$cols)
+base = ggplot()
+for(i in 1:length(colls)){
+
+ dat_filt = EC50_out2_plot %>% 
+    filter(cols == colls[i])
+  
+  
+b = unique(dat_filt$`b:(Intercept)`)
+d = unique(dat_filt$`d:(Intercept)`)
+e = exp(unique(dat_filt$`e:(Intercept)`))
+  
+base = base +
+  geom_point(data =dat_filt, aes(conc,m_col, color = trat))+
+  scale_x_log10()+
+  geom_line(data =dat_filt,
+            stat = "function",
+            fun = model_ll2.3,
+            aes(x = conc, color =trat),
+            args = list(b = b,
+                        d = d,
+                        e = e),
+            size =1)+
+  lemon::facet_rep_grid(trial~specie)+
+  theme_half_open(font_size = 10)+
+  scale_color_calc()+
+  theme(strip.text.x = element_text(face = "italic"),
+        strip.background = element_blank(),
+        panel.spacing = unit(1, "lines"),
+        # panel.border = element_rect(color = "gray")
+        )+
+  labs(x = "Concentrations (μg/mL)",
+       y = "Mycelial growth (mm)",
+       color = "")
+
+}
+base
+
+```
+
+```{r}
+base +ec50_plot+
+  plot_layout(widths = c(2, 1))+
+  plot_annotation(tag_levels = "A")&
+  theme(legend.position = "bottom")
+
+ggsave(".figs/curves_ec50.png", dpi = 600, height = 5.5, width = 8.5)
+```

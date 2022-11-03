@@ -1,0 +1,17 @@
+{
+  "about.qmd": {
+    "about.html": "901b4702"
+  },
+  "index.qmd": {
+    "index.html": "36ea070b"
+  },
+  "fungal_sensibility.qmd": {
+    "fungal_sensibility.html": "8211324c"
+  },
+  "well_diffusion.qmd": {
+    "well_diffusion.html": "dcfd2281"
+  },
+  "controling_efficacy.qmd": {
+    "controling_efficacy.html": "32d83765"
+  }
+}
